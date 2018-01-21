@@ -27,6 +27,7 @@ from tensorflow.python.layers import core as layers_core
 from . import model_helper
 from .utils import iterator_utils
 from .utils import misc_utils as utils
+from .copynet import CopyNetWrapper, CopyNetWrapperState
 
 utils.check_tensorflow_version()
 
@@ -383,6 +384,18 @@ class BaseModel(object):
           hparams, encoder_outputs, encoder_state,
           iterator.source_sequence_length)
 
+      # CopyNetMechanism
+      if hparams.copynet:
+        # Ensure memory is batch-major
+        if self.time_major:
+          encoder_outputs = tf.transpose(encoder_outputs, [1, 0, 2])
+        cell = CopyNetWrapper(cell, encoder_outputs, self.iterator.source,
+            self.src_vocab_size, self.tgt_vocab_size,
+            encoder_state_size=cell.output_size)
+        self.output_layer = None
+        decoder_initial_state = cell.zero_state(self.batch_size,
+            tf.float32).clone(cell_state=decoder_initial_state)
+
       ## Train or eval
       if self.mode != tf.contrib.learn.ModeKeys.INFER:
         # decoder_emp_inp: [max_time, batch_size, num_units]
@@ -418,7 +431,10 @@ class BaseModel(object):
         # We chose to apply the output_layer to all timesteps for speed:
         #   10% improvements for small models & 20% for larger ones.
         # If memory is a concern, we should apply output_layer per timestep.
-        logits = self.output_layer(outputs.rnn_output)
+        if self.output_layer is not None:
+            logits = self.output_layer(outputs.rnn_output)
+        else:
+            logits = outputs.rnn_output
 
       ## Inference
       else:
@@ -471,6 +487,9 @@ class BaseModel(object):
         else:
           logits = outputs.rnn_output
           sample_id = outputs.sample_id
+
+    if isinstance(final_context_state, CopyNetWrapperState):
+      final_context_state = final_context_state.cell_state
 
     return logits, sample_id, final_context_state
 

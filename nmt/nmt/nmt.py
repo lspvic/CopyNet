@@ -96,6 +96,11 @@ def add_arguments(parser):
       based model.\
       """)
 
+  # copynet mechanism
+  parser.add_argument("--copynet", type="bool", type="bool", nargs="?", const=True,
+                      default=False,
+                      help="Whether to add copynet mechanism.")
+
   # optimizer
   parser.add_argument("--optimizer", type=str, default="sgd", help="sgd | adam")
   parser.add_argument("--learning_rate", type=float, default=1.0,
@@ -311,6 +316,7 @@ def create_hparams(flags):
       residual=flags.residual,
       time_major=flags.time_major,
       num_embeddings_partitions=flags.num_embeddings_partitions,
+      copynet=flags.copynet,
 
       # Attention mechanisms
       attention=flags.attention,
