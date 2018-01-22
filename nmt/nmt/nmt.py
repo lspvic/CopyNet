@@ -97,7 +97,7 @@ def add_arguments(parser):
       """)
 
   # copynet mechanism
-  parser.add_argument("--copynet", type="bool", type="bool", nargs="?", const=True,
+  parser.add_argument("--copynet", type="bool", nargs="?", const=True,
                       default=False,
                       help="Whether to add copynet mechanism.")
 
