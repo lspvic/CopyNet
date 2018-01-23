@@ -53,27 +53,27 @@ class CopyNetWrapper(tf.nn.rnn_cell.RNNCell):
         mask_sum = tf.reduce_sum(mask, axis=1)
         mask = tf.where(tf.less(mask_sum, 1e-7), mask, mask / tf.expand_dims(mask_sum, 1))
         rou = mask * prob_c
-        selective_read = tf.reduce_sum(self._encoder_states * tf.expand_dims(rou, 2), 1)
+        selective_read = tf.einsum("ijk,ij->ik", self._encoder_states, rou)
         inputs = tf.concat([inputs, selective_read], 1)
 
         outputs, cell_state = self._cell(inputs, cell_state, scope)
         generate_score = self._projection(outputs)
 
-        copy_score = tf.tensordot(self._encoder_states, self._copy_weight, [[2], [0]])
+        copy_score = tf.einsum("ijk,km->ijm", self._encoder_states, self._copy_weight)
         copy_score = tf.nn.tanh(copy_score)
 
-        #copy_score = tf.matmul(copy_score, tf.expand_dims(state, 2))
-        copy_score = tf.reduce_sum(copy_score * tf.expand_dims(outputs, 1), 2)
-
+        copy_score = tf.einsum("ijm,im->ij", copy_score, outputs)
         encoder_input_mask = tf.one_hot(self._encoder_input_ids, self._encoder_vocab_size)
-        expanded_copy_score = tf.reduce_sum(encoder_input_mask * tf.expand_dims(copy_score, 2), 2)
+        expanded_copy_score = tf.einsum("ijn,ij->ij", encoder_input_mask, copy_score)
+
         prob_g = generate_score
         prob_c = expanded_copy_score
 #        mixed_score = tf.concat([generate_score, expanded_copy_score], 1)
 #        probs = tf.nn.softmax(mixed_score)
 #        prob_g = probs[:, :self._decoder_vocab_size]
 #        prob_c = probs[:, self._decoder_vocab_size:]
-        outputs = prob_g + tf.reduce_sum(encoder_input_mask * tf.expand_dims(prob_c,  2), 1)
+
+        outputs = prob_g + tf.einsum("ijn,ij->in", encoder_input_mask, prob_c)
         last_ids = tf.argmax(outputs, axis=-1, output_type=tf.int32)
         #prob_c.set_shape([None, self._encoder_state_size])
         state = CopyNetWrapperState(cell_state=cell_state, last_ids=last_ids, prob_c=prob_c)
