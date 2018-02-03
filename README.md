@@ -35,8 +35,11 @@ decoder_logits, decoder_ids = decoder_outputs
 ### 2. Use with tensorflow official nmt
 
 Full nmt usages are in [nmt](https://github.com/tensorflow/nmt).
+
 `--copynet` argument added to nmt command line to enable copy mechanism.
+
 `--share_vocab` argument must be set.
+
 `--gen_vocab_size` argument represents the size of generated vocabulary (excluding copy words from target vocabulary), if is not set, it equals the size of whole vocabulary.
 
 ```bash
