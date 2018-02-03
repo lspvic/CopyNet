@@ -100,6 +100,13 @@ def add_arguments(parser):
   parser.add_argument("--copynet", type="bool", nargs="?", const=True,
                       default=False,
                       help="Whether to add copynet mechanism.")
+  parser.add_argument("--gen_vocab_size", type=int, default=None, help="""
+      Generated target vocabulary size, namely, the target vocabulary excluding
+      words from source sequences (copied words). Notice that the first
+      `gen_vocab_size` words of the shared vocabulary must be the generated
+      words. If it is not set, default None to use the whole shared vocabulary as
+      the generated vocabulary.
+      """)
 
   # optimizer
   parser.add_argument("--optimizer", type=str, default="sgd", help="sgd | adam")
@@ -316,7 +323,10 @@ def create_hparams(flags):
       residual=flags.residual,
       time_major=flags.time_major,
       num_embeddings_partitions=flags.num_embeddings_partitions,
+
+      # CopyNet
       copynet=flags.copynet,
+      gen_vocab_size=flags.gen_vocab_size,
 
       # Attention mechanisms
       attention=flags.attention,
@@ -476,6 +486,16 @@ def extend_hparams(hparams):
 
     if tf.gfile.Exists(tgt_embed_file):
       hparams.tgt_embed_file = tgt_embed_file
+
+  # CopyNet checks
+  if hparams.copynet:
+    print("FDFSFSDFDS", hparams.share_vocab)
+    assert hparams.share_vocab, """
+        CopyNet must use a shared vocabulary `--share_vocab`, see help from `--copynet`
+        and `--gen_vocab_size`.
+        """
+    if hparams.gen_vocab_size is None:
+      hparams.gen_vocab_size = hparams.tgt_vocab_size
 
   # Check out_dir
   if not tf.gfile.Exists(hparams.out_dir):

@@ -21,12 +21,22 @@ class CopyNetWrapperState(
 
 class CopyNetWrapper(tf.nn.rnn_cell.RNNCell):
 
-    def __init__(self, cell, encoder_states, encoder_input_ids, encoder_vocab_size,
-            decoder_vocab_size, encoder_state_size=None, initial_cell_state=None, name=None):
+    def __init__(self, cell, encoder_states, encoder_input_ids, vocab_size,
+            gen_vocab_size=None, encoder_state_size=None, initial_cell_state=None, name=None):
+        """
+        Args:
+            cell:
+            encoder_states:
+            encoder_input_ids:
+            tgt_vocab_size:
+            gen_vocab_size:
+            encoder_state_size:
+            initial_cell_state:
+        """
         super(CopyNetWrapper, self).__init__(name=name)
         self._cell = cell
-        self._encoder_vocab_size = encoder_vocab_size
-        self._decoder_vocab_size = decoder_vocab_size
+        self._vocab_size = vocab_size
+        self._gen_vocab_size = gen_vocab_size or vocab_size
 
         self._encoder_input_ids = encoder_input_ids
         self._encoder_states = encoder_states
@@ -38,8 +48,7 @@ class CopyNetWrapper(tf.nn.rnn_cell.RNNCell):
 
         self._initial_cell_state = initial_cell_state
         self._copy_weight = tf.get_variable('CopyWeight', [self._encoder_state_size , self._cell.output_size])
-        self._projection = tf.layers.Dense(self._decoder_vocab_size, use_bias=False, name="OutputProjection")
-
+        self._projection = tf.layers.Dense(self._gen_vocab_size, use_bias=False, name="OutputProjection")
 
     def __call__(self, inputs, state, scope=None):
         if not isinstance(state, CopyNetWrapperState):
@@ -63,17 +72,19 @@ class CopyNetWrapper(tf.nn.rnn_cell.RNNCell):
         copy_score = tf.nn.tanh(copy_score)
 
         copy_score = tf.einsum("ijm,im->ij", copy_score, outputs)
-        encoder_input_mask = tf.one_hot(self._encoder_input_ids, self._encoder_vocab_size)
+        encoder_input_mask = tf.one_hot(self._encoder_input_ids, self._vocab_size)
         expanded_copy_score = tf.einsum("ijn,ij->ij", encoder_input_mask, copy_score)
 
         prob_g = generate_score
         prob_c = expanded_copy_score
 #        mixed_score = tf.concat([generate_score, expanded_copy_score], 1)
 #        probs = tf.nn.softmax(mixed_score)
-#        prob_g = probs[:, :self._decoder_vocab_size]
-#        prob_c = probs[:, self._decoder_vocab_size:]
+#        prob_g = probs[:, :self._gen_vocab_size]
+#        prob_c = probs[:, self._gen_vocab_size:]
 
-        outputs = prob_g + tf.einsum("ijn,ij->in", encoder_input_mask, prob_c)
+        prob_c_one_hot = tf.einsum("ijn,ij->in", encoder_input_mask, prob_c)
+        prob_g_total = tf.pad(prob_g, [[0, 0], [0, self._vocab_size - self._gen_vocab_size]])
+        outputs = prob_c_one_hot + prob_g_total
         last_ids = tf.argmax(outputs, axis=-1, output_type=tf.int32)
         #prob_c.set_shape([None, self._encoder_state_size])
         state = CopyNetWrapperState(cell_state=cell_state, last_ids=last_ids, prob_c=prob_c)
@@ -92,7 +103,7 @@ class CopyNetWrapper(tf.nn.rnn_cell.RNNCell):
     @property
     def output_size(self):
         """Integer or TensorShape: size of outputs produced by this cell."""
-        return self._decoder_vocab_size
+        return self._vocab_size
 
     def zero_state(self, batch_size, dtype):
         with tf.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
