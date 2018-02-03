@@ -8,8 +8,9 @@ Official [nmt](https://github.com/tensorflow/nmt) is also modified to enable Cop
 
 ## Vocabulary Setting
 
-Since in copynet scenarios the target sequence contains words from source sentences, the best choice is to use a **shared vocabulary** for source vocabulary and target vcabulary. And we use **generated  vocabulary**, namely, the target vocabulary excluding  words from source sequences (copied words). In this codebase, `vocab_size` and `gen_vocab_size` are variables representing
-shared vocabulary size and generated vocabulalry size.
+Since in copynet scenarios the target sequence contains words from source sentences, the best choice is to use a **shared vocabulary** for source vocabulary and target vcabulary. And we also use a parameter **generated  vocabulary size**, namely, the number of target vocabulary excluding  words from source sequences (copied words), to indicate that the first N(=generated vocabulary size) words in shared vocabulary are in generate mode and target word indexes larger than N are copied.
+
+In this codebase, `vocab_size` and `gen_vocab_size` are variables representing shared vocabulary size and generated vocabulalry size.
 
 ## Usage
 
