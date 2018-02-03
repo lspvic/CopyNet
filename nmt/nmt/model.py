@@ -389,9 +389,12 @@ class BaseModel(object):
         # Ensure memory is batch-major
         if self.time_major:
           encoder_outputs = tf.transpose(encoder_outputs, [1, 0, 2])
+        encoder_state_size = cell.output_size
+        if hparams.encoder_type == "bi":
+          encoder_state_size *= 2
         cell = CopyNetWrapper(cell, encoder_outputs, self.iterator.source,
             self.src_vocab_size, self.tgt_vocab_size,
-            encoder_state_size=cell.output_size)
+            encoder_state_size=encoder_state_size)
         self.output_layer = None
         decoder_initial_state = cell.zero_state(self.batch_size,
             tf.float32).clone(cell_state=decoder_initial_state)
