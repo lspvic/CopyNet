@@ -380,11 +380,11 @@ class BaseModel(object):
 
     ## Decoder.
     with tf.variable_scope("decoder") as decoder_scope:
-      cell, decoder_initial_state = self._build_decoder_cell(
+      
+      cell, decoder_initial_state = self._build_decoder_cell( # Here call the AttentionModel._build_decoder_cell
           hparams, encoder_outputs, encoder_state,
           iterator.source_sequence_length)
-
-      # CopyNetMechanism
+      
       if hparams.copynet:
         # Ensure memory is batch-major
         if self.time_major:
@@ -392,12 +392,20 @@ class BaseModel(object):
         encoder_state_size = cell.output_size
         if hparams.encoder_type == "bi":
           encoder_state_size *= 2
+        # cell = CopyNetWrapper(cell, encoder_outputs, self.iterator.source,
+        #     self.src_vocab_size, hparams.gen_vocab_size,
+        #     encoder_state_size=encoder_state_size)
+
         cell = CopyNetWrapper(cell, encoder_outputs, self.iterator.source,
-            self.src_vocab_size, hparams.gen_vocab_size,
-            encoder_state_size=encoder_state_size)
+          self.src_vocab_size, hparams=hparams,
+          encoder_state_size=encoder_state_size)
         self.output_layer = None
-        decoder_initial_state = cell.zero_state(self.batch_size,
-            tf.float32).clone(cell_state=decoder_initial_state)
+        if hparams.beam_width > 0:
+          decoder_initial_state = cell.zero_state(self.batch_size*hparams.beam_width,
+              tf.float32).clone(cell_state=decoder_initial_state)
+        else:
+          decoder_initial_state = cell.zero_state(self.batch_size,
+              tf.float32).clone(cell_state=decoder_initial_state)
 
       ## Train or eval
       if self.mode != tf.contrib.learn.ModeKeys.INFER:
@@ -438,6 +446,7 @@ class BaseModel(object):
             logits = self.output_layer(outputs.rnn_output)
         else:
             logits = outputs.rnn_output
+
 
       ## Inference
       else:
@@ -563,6 +572,8 @@ class BaseModel(object):
                                   # time, beam_width] shape.
       sample_words = sample_words.transpose([2, 0, 1])
     return sample_words, infer_summary
+
+
 
 
 class Model(BaseModel):

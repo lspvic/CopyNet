@@ -22,7 +22,7 @@ class CopyNetWrapperState(
 class CopyNetWrapper(tf.nn.rnn_cell.RNNCell):
 
     def __init__(self, cell, encoder_states, encoder_input_ids, vocab_size,
-            gen_vocab_size=None, encoder_state_size=None, initial_cell_state=None, name=None):
+            hparams=None, encoder_state_size=None, initial_cell_state=None, name=None):
         """
         Args:
             cell:
@@ -34,12 +34,13 @@ class CopyNetWrapper(tf.nn.rnn_cell.RNNCell):
             initial_cell_state:
         """
         super(CopyNetWrapper, self).__init__(name=name)
+        self._hparams = hparams
         self._cell = cell
         self._vocab_size = vocab_size
-        self._gen_vocab_size = gen_vocab_size or vocab_size
+        self._gen_vocab_size = self._hparams.gen_vocab_size or vocab_size
 
-        self._encoder_input_ids = encoder_input_ids
-        self._encoder_states = encoder_states
+        self._encoder_input_ids = tf.contrib.seq2seq.tile_batch(encoder_input_ids, multiplier=self._hparams.beam_width)
+        self._encoder_states = tf.contrib.seq2seq.tile_batch(encoder_states, multiplier=self._hparams.beam_width)
         if encoder_state_size is None:
             encoder_state_size = self._encoder_states.shape[-1].value
             if encoder_state_size is None:
@@ -58,20 +59,20 @@ class CopyNetWrapper(tf.nn.rnn_cell.RNNCell):
         prob_c = state.prob_c
         cell_state = state.cell_state
 
-        mask = tf.cast(tf.equal(tf.expand_dims(last_ids, 1),  self._encoder_input_ids), tf.float32)
+        mask = tf.cast(tf.equal(tf.expand_dims(last_ids, 1), self._encoder_input_ids),   tf.float32)
         mask_sum = tf.reduce_sum(mask, axis=1)
         mask = tf.where(tf.less(mask_sum, 1e-7), mask, mask / tf.expand_dims(mask_sum, 1))
         rou = mask * prob_c
         selective_read = tf.einsum("ijk,ij->ik", self._encoder_states, rou)
         inputs = tf.concat([inputs, selective_read], 1)
 
-        outputs, cell_state = self._cell(inputs, cell_state, scope)
+        outputs, cell_state = self._cell(inputs, cell_state, scope) # St, 
         generate_score = self._projection(outputs)
 
         copy_score = tf.einsum("ijk,km->ijm", self._encoder_states, self._copy_weight)
         copy_score = tf.nn.tanh(copy_score)
-
         copy_score = tf.einsum("ijm,im->ij", copy_score, outputs)
+
         encoder_input_mask = tf.one_hot(self._encoder_input_ids, self._vocab_size)
         expanded_copy_score = tf.einsum("ijn,ij->ij", encoder_input_mask, copy_score)
 
@@ -110,7 +111,8 @@ class CopyNetWrapper(tf.nn.rnn_cell.RNNCell):
             if self._initial_cell_state is not None:
                 cell_state = self._initial_cell_state
             else:
-                cell_state = self._cell.zero_state(batch_size, dtype)
+                cell_state = self._cell.zero_state(batch_size,dtype)
+
             last_ids = tf.zeros([batch_size], tf.int32) - 1
             prob_c = tf.zeros([batch_size, tf.shape(self._encoder_states)[1]], tf.float32)
             return CopyNetWrapperState(cell_state=cell_state, last_ids=last_ids, prob_c=prob_c)
